@@ -1,5 +1,5 @@
 //import { google } from "@ai-sdk/google";  // changed
-import { createGroq } from "@ai-sdk/groq";
+/*import { createGroq } from "@ai-sdk/groq";
 import { generateText } from "ai";
 import { searchFundsTool, getFundDetailsTool, getIndexFundsTool } from "../tools/fundTools";
 
@@ -91,15 +91,15 @@ Recommend exactly 3 funds in this exact JSON format:
     }
 
     return JSON.parse(jsonMatch[0]);
-}
+}*/
 
 
 
 
 
 
-/*
-import { anthropic } from "@ai-sdk/anthropic";
+
+/*import { anthropic } from "@ai-sdk/anthropic";
 import { generateText } from "ai";
 import { searchFundsTool, getFundDetailsTool, getIndexFundsTool } from "../tools/fundTools";
 
@@ -126,7 +126,7 @@ export async function runFundRecommendationAgent(preference: UserPreference) {
         //model: anthropic("claude-sonnet-4-20250514"),
         model: anthropic("claude-haiku-4-5"),
         maxSteps: 10, // allows multi-step tool use (agentic loop)
-        system: `You are an expert Indian mutual fund advisor. 
+        system: `You are an expert Indian mutual fund advisor.
 Your job is to recommend exactly 3 funds tailored to the user's preferences.
 
 Guidelines:
@@ -164,6 +164,175 @@ Guidelines:
     const clean = text.replace(/```json|```/g, "").trim();
     return JSON.parse(clean);
 }*/
+
+
+
+import Anthropic from "@anthropic-ai/sdk";
+import { searchFundsTool, getFundDetailsTool, getIndexFundsTool } from "../tools/fundTools";
+
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+export interface UserPreference {
+    riskAppetite: "low" | "medium" | "high";
+    investmentGoal: string;
+    horizon: string;
+    monthlyAmount?: number;
+    preferIndex?: boolean;
+    freeText?: string;
+}
+
+const tools: Anthropic.Tool[] = [
+    {
+        name: "searchFunds",
+        description: "Search for Indian mutual funds or index funds by name or category keyword.",
+        input_schema: {
+            type: "object",
+            properties: {
+                query: {
+                    type: "string",
+                    description: "Fund name, AMC, or category e.g. 'Nifty 50 index', 'flexi cap'",
+                },
+            },
+            required: ["query"],
+        },
+    },
+    {
+        name: "getFundDetails",
+        description: "Get detailed NAV history and fund metadata by scheme code.",
+        input_schema: {
+            type: "object",
+            properties: {
+                schemeCode: {
+                    type: "string",
+                    description: "The unique scheme code of the mutual fund",
+                },
+            },
+            required: ["schemeCode"],
+        },
+    },
+    {
+        name: "getIndexFunds",
+        description: "Get a curated list of popular Indian index funds and their scheme codes.",
+        input_schema: {
+            type: "object",
+            properties: {},
+        },
+    },
+];
+
+async function executeTool(name: string, input: any): Promise<any> {
+    if (name === "searchFunds") return await searchFundsTool.execute!(input, {} as any);
+    if (name === "getFundDetails") return await getFundDetailsTool.execute!(input, {} as any);
+    if (name === "getIndexFunds") return await getIndexFundsTool.execute!(input, {} as any);
+    throw new Error(`Unknown tool: ${name}`);
+}
+
+function extractJSON(text: string) {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("No JSON found in response: " + text.substring(0, 200));
+    return JSON.parse(match[0]);
+}
+
+export async function runFundRecommendationAgent(preference: UserPreference) {
+    const userContext = `
+    Risk Appetite: ${preference.riskAppetite}
+    Investment Goal: ${preference.investmentGoal}
+    Time Horizon: ${preference.horizon}
+    ${preference.monthlyAmount ? `Monthly SIP Amount: ₹${preference.monthlyAmount}` : ""}
+    ${preference.preferIndex ? "User prefers index/passive funds" : ""}
+    ${preference.freeText ? `Additional context: ${preference.freeText}` : ""}
+    `.trim();
+
+    const messages: Anthropic.MessageParam[] = [
+        {
+            role: "user",
+            content: `Based on these user preferences, find and recommend exactly 3 mutual funds:\n\n${userContext}`,
+        },
+    ];
+
+    const systemPrompt = `You are an expert Indian mutual fund advisor.
+Your job is to recommend exactly 3 funds tailored to the user's preferences.
+
+Guidelines:
+- Always use the available tools to fetch REAL, LIVE fund data before recommending
+- For low risk users: prefer index funds, large cap, or debt-oriented hybrid
+- For medium risk: flexi cap, large & mid cap, or balanced advantage
+- For high risk: mid cap, small cap, or sectoral/thematic
+- Always check 1-year and 30-day returns using getFundDetails
+- Do NOT add any text before or after the JSON
+- Output ONLY the raw JSON object, nothing else
+
+Respond ONLY in this exact JSON format:
+{
+  "recommendations": [
+    {
+      "rank": 1,
+      "schemeName": "...",
+      "schemeCode": "...",
+      "fundHouse": "...",
+      "category": "...",
+      "currentNAV": "...",
+      "returns1Year": "...",
+      "returns30Days": "...",
+      "whyChosen": "2-3 sentence personalized explanation"
+    }
+  ],
+  "summary": "Overall strategy explanation in 2-3 sentences"
+}`;
+
+    for (let step = 0; step < 10; step++) {
+        const response = await client.messages.create({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 4096,
+            system: systemPrompt,
+            tools,
+            messages,
+        });
+
+        // Add assistant response to history
+        messages.push({ role: "assistant", content: response.content });
+
+        // Final answer
+        if (response.stop_reason === "end_turn") {
+            const textBlock = response.content.find((b) => b.type === "text");
+            if (!textBlock || textBlock.type !== "text") {
+                throw new Error("No text response from agent");
+            }
+            return extractJSON(textBlock.text);
+        }
+
+        // Process tool calls
+        if (response.stop_reason === "tool_use") {
+            const toolResults: Anthropic.ToolResultBlockParam[] = [];
+
+            for (const block of response.content) {
+                if (block.type === "tool_use") {
+                    console.log(`🔧 Tool called: ${block.name}`, block.input);
+                    try {
+                        const result = await executeTool(block.name, block.input);
+                        toolResults.push({
+                            type: "tool_result",
+                            tool_use_id: block.id,
+                            content: JSON.stringify(result),
+                        });
+                    } catch (err: any) {
+                        // Return error to agent so it can recover
+                        toolResults.push({
+                            type: "tool_result",
+                            tool_use_id: block.id,
+                            content: `Error: ${err.message}`,
+                            is_error: true,
+                        });
+                    }
+                }
+            }
+
+            messages.push({ role: "user", content: toolResults });
+        }
+    }
+
+    throw new Error("Agent exceeded maximum steps without finishing");
+}
 
 
 
