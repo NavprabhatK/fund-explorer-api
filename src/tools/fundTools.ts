@@ -57,9 +57,10 @@ export const getFundDetailsTool = tool({
 export const getIndexFundsTool = tool({
     description:
         "Get a curated list of popular Indian index funds and their scheme codes. Use this when the user wants passive/index investing options.",
-    parameters: z.object({}),
+    parameters: z.object({
+        dummy: z.string().optional().describe("Not required, leave empty"),
+    }),
     execute: async () => {
-        // These are real scheme codes for popular index funds
         return [
             { name: "UTI Nifty 50 Index Fund - Direct", schemeCode: "120716" },
             { name: "HDFC Index Fund - NIFTY 50 Plan - Direct", schemeCode: "120505" },
