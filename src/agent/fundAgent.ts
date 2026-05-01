@@ -1,172 +1,3 @@
-//import { google } from "@ai-sdk/google";  // changed
-/*import { createGroq } from "@ai-sdk/groq";
-import { generateText } from "ai";
-import { searchFundsTool, getFundDetailsTool, getIndexFundsTool } from "../tools/fundTools";
-
-export interface UserPreference {
-    riskAppetite: "low" | "medium" | "high";
-    investmentGoal: string;
-    horizon: string;
-    monthlyAmount?: number;
-    preferIndex?: boolean;
-    freeText?: string;
-}
-
-export async function runFundRecommendationAgent(preference: UserPreference) {
-    const userContext = `
-    Risk Appetite: ${preference.riskAppetite}
-    Investment Goal: ${preference.investmentGoal}
-    Time Horizon: ${preference.horizon}
-    ${preference.monthlyAmount ? `Monthly SIP Amount: ₹${preference.monthlyAmount}` : ""}
-    ${preference.preferIndex ? "User prefers index/passive funds" : ""}
-    ${preference.freeText ? `Additional context: ${preference.freeText}` : ""}
-  `.trim();
-
-    const groq = createGroq({
-        apiKey: process.env.GROQ_API_KEY,
-    });
-
-    // Step 1: Let the agent do all tool calls to gather fund data
-    const { steps } = await generateText({
-        model: groq("llama-3.3-70b-versatile"),
-        maxSteps: 10,
-        system: `You are an expert Indian mutual fund advisor. 
-Use the available tools to search and fetch real fund data based on the user's preferences.
-- For low risk users: prefer index funds, large cap, or debt-oriented hybrid
-- For medium risk: flexi cap, large & mid cap, or balanced advantage
-- For high risk: mid cap, small cap, or sectoral/thematic
-- Fetch details for at least 3 funds using getFundDetails to get NAV and returns data.`,
-        prompt: `Fetch fund data for this user:\n\n${userContext}`,
-        tools: {
-            searchFunds: searchFundsTool,
-            getFundDetails: getFundDetailsTool,
-            getIndexFunds: getIndexFundsTool,
-        },
-    });
-
-    // Step 2: Collect all tool results from the steps
-    const toolResultsSummary = steps
-        .flatMap(step => step.toolResults ?? [])
-        .map(r => JSON.stringify(r))
-        .join("\n\n");
-
-    console.log("Tool results collected:", toolResultsSummary.slice(0, 500));
-
-    // Step 3: Separate call with NO tools — just summarize into JSON
-    const { text: finalText } = await generateText({
-        model: groq("llama-3.3-70b-versatile"),
-        system: `You are an expert Indian mutual fund advisor. 
-Respond ONLY with a raw JSON object. No markdown, no backticks, no explanation.
-Start your response with { and end with }.`,
-        prompt: `Based on this user profile:
-${userContext}
-
-And this real fund data fetched from the API:
-${toolResultsSummary}
-
-Recommend exactly 3 funds in this exact JSON format:
-{
-  "recommendations": [
-    {
-      "rank": 1,
-      "schemeName": "...",
-      "schemeCode": "...",
-      "fundHouse": "...",
-      "category": "...",
-      "currentNAV": "...",
-      "returns1Year": "...",
-      "returns30Days": "...",
-      "whyChosen": "2-3 sentence personalized explanation"
-    }
-  ],
-  "summary": "Overall strategy explanation in 2-3 sentences"
-}`,
-    });
-
-    console.log("Final model response:", finalText);
-
-    const jsonMatch = finalText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-        throw new Error(`Model did not return valid JSON. Raw response: ${finalText}`);
-    }
-
-    return JSON.parse(jsonMatch[0]);
-}*/
-
-
-
-
-
-
-
-/*import { anthropic } from "@ai-sdk/anthropic";
-import { generateText } from "ai";
-import { searchFundsTool, getFundDetailsTool, getIndexFundsTool } from "../tools/fundTools";
-
-export interface UserPreference {
-    riskAppetite: "low" | "medium" | "high";
-    investmentGoal: string;       // "retirement", "house", "wealth creation"
-    horizon: string;              // "1 year", "5 years", "10+ years"
-    monthlyAmount?: number;       // SIP amount in INR
-    preferIndex?: boolean;        // prefers passive/index funds
-    freeText?: string;            // raw user input
-}
-
-export async function runFundRecommendationAgent(preference: UserPreference) {
-    const userContext = `
-    Risk Appetite: ${preference.riskAppetite}
-    Investment Goal: ${preference.investmentGoal}
-    Time Horizon: ${preference.horizon}
-    ${preference.monthlyAmount ? `Monthly SIP Amount: ₹${preference.monthlyAmount}` : ""}
-    ${preference.preferIndex ? "User prefers index/passive funds" : ""}
-    ${preference.freeText ? `Additional context: ${preference.freeText}` : ""}
-  `.trim();
-
-    const { text, steps } = await generateText({
-        //model: anthropic("claude-sonnet-4-20250514"),
-        model: anthropic("claude-haiku-4-5"),
-        maxSteps: 10, // allows multi-step tool use (agentic loop)
-        system: `You are an expert Indian mutual fund advisor.
-Your job is to recommend exactly 3 funds tailored to the user's preferences.
-
-Guidelines:
-- Always use the available tools to fetch REAL, LIVE fund data before recommending
-- For low risk users: prefer index funds, large cap, or debt-oriented hybrid
-- For medium risk: flexi cap, large & mid cap, or balanced advantage
-- For high risk: mid cap, small cap, or sectoral/thematic
-- Always check 1-year and 30-day returns using getFundDetails
-- Respond ONLY in this JSON format (no markdown, no extra text):
-{
-  "recommendations": [
-    {
-      "rank": 1,
-      "schemeName": "...",
-      "schemeCode": "...",
-      "fundHouse": "...",
-      "category": "...",
-      "currentNAV": "...",
-      "returns1Year": "...",
-      "returns30Days": "...",
-      "whyChosen": "2-3 sentence personalized explanation"
-    }
-  ],
-  "summary": "Overall strategy explanation in 2-3 sentences"
-}`,
-        prompt: `Based on these user preferences, find and recommend exactly 3 mutual funds:\n\n${userContext}`,
-        tools: {
-            searchFunds: searchFundsTool,
-            getFundDetails: getFundDetailsTool,
-            getIndexFunds: getIndexFundsTool,
-        },
-    });
-
-    // Parse the JSON response
-    const clean = text.replace(/```json|```/g, "").trim();
-    return JSON.parse(clean);
-}*/
-
-
-
 import Anthropic from "@anthropic-ai/sdk";
 import { searchFundsTool, getFundDetailsTool, getIndexFundsTool } from "../tools/fundTools";
 
@@ -179,6 +10,37 @@ export interface UserPreference {
     monthlyAmount?: number;
     preferIndex?: boolean;
     freeText?: string;
+}
+
+// Shape returned to the UI for each fund card
+export interface FundRecommendation {
+    rank: number;
+    schemeName: string;
+    schemeCode: string;
+    fundHouse: string;
+    category: string;
+    currentNAV: string;
+    returns30Days: string;
+    returns1Year: string;
+    returns5Year: string;       // absolute % since 5 years ago, or "N/A (fund < 5 years old)"
+    returnsOverall: string;     // absolute % since inception
+    inceptionDate: string;      // date of oldest available NAV
+    expenseRatio: string;       // e.g. "0.05%" or "N/A"
+    trackingError: string;      // e.g. "0.03%" or "N/A"
+    aum: string;                // e.g. "₹22,000 Cr" or "N/A"
+    whyChosen: string;
+    qualityScore: number;       // 1–10 composite score (expense + tracking + AUM)
+    badges: string[];           // e.g. ["Low Cost", "High AUM", "Low Tracking Error"]
+}
+
+export interface AgentResponse {
+    recommendations: FundRecommendation[];
+    summary: string;
+    selectionCriteria: {
+        expenseRatioPriority: string;
+        trackingErrorPriority: string;
+        aumPriority: string;
+    };
 }
 
 const tools: Anthropic.Tool[] = [
@@ -198,7 +60,7 @@ const tools: Anthropic.Tool[] = [
     },
     {
         name: "getFundDetails",
-        description: "Get detailed NAV history and fund metadata by scheme code.",
+        description: "Get detailed NAV history, fund metadata, expense ratio, tracking error, and AUM by scheme code.",
         input_schema: {
             type: "object",
             properties: {
@@ -212,7 +74,7 @@ const tools: Anthropic.Tool[] = [
     },
     {
         name: "getIndexFunds",
-        description: "Get a curated list of popular Indian index funds and their scheme codes.",
+        description: "Get a curated list of popular Indian index funds with expense ratios, tracking errors, and AUM.",
         input_schema: {
             type: "object",
             properties: {},
@@ -227,13 +89,13 @@ async function executeTool(name: string, input: any): Promise<any> {
     throw new Error(`Unknown tool: ${name}`);
 }
 
-function extractJSON(text: string) {
+function extractJSON(text: string): AgentResponse {
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) throw new Error("No JSON found in response: " + text.substring(0, 200));
     return JSON.parse(match[0]);
 }
 
-export async function runFundRecommendationAgent(preference: UserPreference) {
+export async function runFundRecommendationAgent(preference: UserPreference): Promise<AgentResponse> {
     const userContext = `
     Risk Appetite: ${preference.riskAppetite}
     Investment Goal: ${preference.investmentGoal}
@@ -253,16 +115,26 @@ export async function runFundRecommendationAgent(preference: UserPreference) {
     const systemPrompt = `You are an expert Indian mutual fund advisor.
 Your job is to recommend exactly 3 funds tailored to the user's preferences.
 
-Guidelines:
-- Always use the available tools to fetch REAL, LIVE fund data before recommending
-- For low risk users: prefer index funds, large cap, or debt-oriented hybrid
-- For medium risk: flexi cap, large & mid cap, or balanced advantage
-- For high risk: mid cap, small cap, or sectoral/thematic
-- Always check 1-year and 30-day returns using getFundDetails
-- Do NOT add any text before or after the JSON
-- Output ONLY the raw JSON object, nothing else
+SELECTION CRITERIA — pick funds with the best combination of:
+1. LOW expense ratio (prefer funds below 0.20% for index, below 1.5% for active)
+2. VERY LOW tracking error (for index funds — prefer below 0.10%)
+3. LARGE AUM (prefer funds above ₹5,000 Cr for index; ₹3,000 Cr for active — larger AUM = more liquid and trustworthy)
 
-Respond ONLY in this exact JSON format:
+Guidelines by risk appetite:
+- Low risk: index funds (Nifty 50 / Sensex) or large cap / debt-oriented hybrid
+- Medium risk: flexi cap, large & mid cap, or balanced advantage
+- High risk: mid cap, small cap, or sectoral/thematic
+
+Steps you MUST follow:
+1. Call getIndexFunds if the user prefers index or has low risk
+2. Call searchFunds for the appropriate category based on risk
+3. Call getFundDetails for at least 4–5 candidates to compare their expense ratio, tracking error, AUM, and returns
+4. Pick the best 3 based on the SELECTION CRITERIA above
+5. Assign badges: "Low Cost" if expenseRatio ≤ 0.10%, "Very Low Cost" if ≤ 0.05%, "Large AUM" if AUM > ₹10,000 Cr, "Low Tracking Error" if trackingError ≤ 0.05%
+6. Assign qualityScore 1–10: 10 = best possible (lowest expense + lowest tracking + highest AUM)
+7. Output ONLY the raw JSON object below — no markdown, no explanation, no text before or after
+
+Output ONLY this exact JSON structure:
 {
   "recommendations": [
     {
@@ -272,12 +144,25 @@ Respond ONLY in this exact JSON format:
       "fundHouse": "...",
       "category": "...",
       "currentNAV": "...",
-      "returns1Year": "...",
       "returns30Days": "...",
-      "whyChosen": "2-3 sentence personalized explanation"
+      "returns1Year": "...",
+      "returns5Year": "...",
+      "returnsOverall": "...",
+      "inceptionDate": "...",
+      "expenseRatio": "0.05%",
+      "trackingError": "0.03%",
+      "aum": "₹22,000 Cr",
+      "whyChosen": "2–3 sentence personalized explanation referencing expense ratio, tracking error, or AUM",
+      "qualityScore": 9,
+      "badges": ["Low Cost", "Large AUM", "Low Tracking Error"]
     }
   ],
-  "summary": "Overall strategy explanation in 2-3 sentences"
+  "summary": "Overall 2–3 sentence strategy explanation mentioning why these funds were chosen based on cost and quality.",
+  "selectionCriteria": {
+    "expenseRatioPriority": "Funds with expense ratio below 0.10% were preferred to maximize net returns",
+    "trackingErrorPriority": "Index funds with tracking error below 0.05% were preferred for accurate benchmark replication",
+    "aumPriority": "Funds with AUM above ₹10,000 Cr were preferred for liquidity and stability"
+  }
 }`;
 
     for (let step = 0; step < 10; step++) {
@@ -289,10 +174,8 @@ Respond ONLY in this exact JSON format:
             messages,
         });
 
-        // Add assistant response to history
         messages.push({ role: "assistant", content: response.content });
 
-        // Final answer
         if (response.stop_reason === "end_turn") {
             const textBlock = response.content.find((b) => b.type === "text");
             if (!textBlock || textBlock.type !== "text") {
@@ -301,7 +184,6 @@ Respond ONLY in this exact JSON format:
             return extractJSON(textBlock.text);
         }
 
-        // Process tool calls
         if (response.stop_reason === "tool_use") {
             const toolResults: Anthropic.ToolResultBlockParam[] = [];
 
@@ -316,7 +198,6 @@ Respond ONLY in this exact JSON format:
                             content: JSON.stringify(result),
                         });
                     } catch (err: any) {
-                        // Return error to agent so it can recover
                         toolResults.push({
                             type: "tool_result",
                             tool_use_id: block.id,
@@ -333,6 +214,3 @@ Respond ONLY in this exact JSON format:
 
     throw new Error("Agent exceeded maximum steps without finishing");
 }
-
-
-
