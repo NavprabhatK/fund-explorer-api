@@ -22,7 +22,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Build the project (compiles TypeScript → JS, or bundles with Bun)
-RUN bun build ./src/index.ts \
+RUN bun build ./index.ts \
       --target=bun \
       --outdir=./dist \
       --minify
