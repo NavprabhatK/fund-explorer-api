@@ -12,8 +12,12 @@ app.use("*", prettyJSON());
 app.use(
     "*",
     cors({
-        origin: ["http://localhost:3000", "https://your-frontend.vercel.app"],
+        origin: [
+            "http://localhost:3000",
+            process.env.FRONTEND_URL ?? "",
+        ],
         allowMethods: ["GET", "POST", "OPTIONS"],
+        allowHeaders: ["Content-Type"],
     })
 );
 
