@@ -12,7 +12,6 @@ export interface UserPreference {
     freeText?: string;
 }
 
-// Shape returned to the UI for each fund card
 export interface FundRecommendation {
     rank: number;
     schemeName: string;
@@ -22,15 +21,17 @@ export interface FundRecommendation {
     currentNAV: string;
     returns30Days: string;
     returns1Year: string;
-    returns5Year: string;       // absolute % since 5 years ago, or "N/A (fund < 5 years old)"
-    returnsOverall: string;     // absolute % since inception
-    inceptionDate: string;      // date of oldest available NAV
-    expenseRatio: string;       // e.g. "0.05%" or "N/A"
-    trackingError: string;      // e.g. "0.03%" or "N/A"
-    aum: string;                // e.g. "₹22,000 Cr" or "N/A"
+    returns3Year: string;
+    returns5Year: string;       // CAGR % over 5 years, or "N/A (fund < 5 years old)"
+    returnsOverall: string;     // CAGR % since inception
+    inceptionDate: string;
+    fundAgeYears: number;
+    expenseRatio: string;       // e.g. "0.07%"
+    trackingError: string;      // e.g. "0.03%" — N/A for active funds
+    aum: string;                // e.g. "₹3,030 Cr"
     whyChosen: string;
-    qualityScore: number;       // 1–10 composite score (expense + tracking + AUM)
-    badges: string[];           // e.g. ["Low Cost", "High AUM", "Low Tracking Error"]
+    qualityScore: number;       // 1–10 composite (see scoring rubric in system prompt)
+    badges: string[];
 }
 
 export interface AgentResponse {
@@ -52,7 +53,7 @@ const tools: Anthropic.Tool[] = [
             properties: {
                 query: {
                     type: "string",
-                    description: "Fund name, AMC, or category e.g. 'Nifty 50 index', 'flexi cap'",
+                    description: "Fund name, AMC, or category e.g. 'Nifty 50 index', 'Nippon nifty 50', 'flexi cap'",
                 },
             },
             required: ["query"],
@@ -60,7 +61,7 @@ const tools: Anthropic.Tool[] = [
     },
     {
         name: "getFundDetails",
-        description: "Get detailed NAV history, fund metadata, expense ratio, tracking error, and AUM by scheme code.",
+        description: "Get detailed NAV history, CAGR returns (1Y/3Y/5Y/overall), expense ratio, tracking error, and AUM by scheme code.",
         input_schema: {
             type: "object",
             properties: {
@@ -74,18 +75,24 @@ const tools: Anthropic.Tool[] = [
     },
     {
         name: "getIndexFunds",
-        description: "Get a curated list of popular Indian index funds with expense ratios, tracking errors, and AUM.",
+        description: "Get a curated list of popular Indian index funds with expense ratios, tracking errors, and AUM. Supports optional category filter.",
         input_schema: {
             type: "object",
-            properties: {},
+            properties: {
+                category: {
+                    type: "string",
+                    enum: ["nifty50", "nifty_next50", "midcap", "smallcap", "international", "all"],
+                    description: "Filter by index category. Use 'all' to get everything.",
+                },
+            },
         },
     },
 ];
 
 async function executeTool(name: string, input: any): Promise<any> {
-    if (name === "searchFunds") return await searchFundsTool.execute!(input, {} as any);
+    if (name === "searchFunds")   return await searchFundsTool.execute!(input, {} as any);
     if (name === "getFundDetails") return await getFundDetailsTool.execute!(input, {} as any);
-    if (name === "getIndexFunds") return await getIndexFundsTool.execute!(input, {} as any);
+    if (name === "getIndexFunds")  return await getIndexFundsTool.execute!(input, {} as any);
     throw new Error(`Unknown tool: ${name}`);
 }
 
@@ -97,12 +104,12 @@ function extractJSON(text: string): AgentResponse {
 
 export async function runFundRecommendationAgent(preference: UserPreference): Promise<AgentResponse> {
     const userContext = `
-    Risk Appetite: ${preference.riskAppetite}
-    Investment Goal: ${preference.investmentGoal}
-    Time Horizon: ${preference.horizon}
-    ${preference.monthlyAmount ? `Monthly SIP Amount: ₹${preference.monthlyAmount}` : ""}
-    ${preference.preferIndex ? "User prefers index/passive funds" : ""}
-    ${preference.freeText ? `Additional context: ${preference.freeText}` : ""}
+Risk Appetite: ${preference.riskAppetite}
+Investment Goal: ${preference.investmentGoal}
+Time Horizon: ${preference.horizon}
+${preference.monthlyAmount ? `Monthly SIP Amount: ₹${preference.monthlyAmount}` : ""}
+${preference.preferIndex ? "User prefers index/passive funds" : ""}
+${preference.freeText ? `Additional context: ${preference.freeText}` : ""}
     `.trim();
 
     const messages: Anthropic.MessageParam[] = [
@@ -112,29 +119,96 @@ export async function runFundRecommendationAgent(preference: UserPreference): Pr
         },
     ];
 
-    const systemPrompt = `You are an expert Indian mutual fund advisor.
+    const systemPrompt = `You are an expert Indian mutual fund advisor — objective, data-driven, and focused on long-term wealth creation.
 Your job is to recommend exactly 3 funds tailored to the user's preferences.
 
-SELECTION CRITERIA — pick funds with the best combination of:
-1. LOW expense ratio (prefer funds below 0.20% for index, below 1.5% for active)
-2. VERY LOW tracking error (for index funds — prefer below 0.10%)
-3. LARGE AUM (prefer funds above ₹5,000 Cr for index; ₹3,000 Cr for active — larger AUM = more liquid and trustworthy)
+═══════════════════════════════════════════════
+SCORING RUBRIC — compute qualityScore (1–10)
+═══════════════════════════════════════════════
+For INDEX funds (passive), score on three factors:
 
-Guidelines by risk appetite:
-- Low risk: index funds (Nifty 50 / Sensex) or large cap / debt-oriented hybrid
-- Medium risk: flexi cap, large & mid cap, or balanced advantage
-- High risk: mid cap, small cap, or sectoral/thematic
+  Expense Ratio (50% weight — most important over long horizon):
+    ≤ 0.10%  → 10 points
+    ≤ 0.15%  →  8 points
+    ≤ 0.20%  →  6 points
+    ≤ 0.25%  →  4 points
+    > 0.25%  →  2 points
 
-Steps you MUST follow:
-1. Call getIndexFunds if the user prefers index or has low risk
-2. Call searchFunds for the appropriate category based on risk
-3. Call getFundDetails for at least 4–5 candidates to compare their expense ratio, tracking error, AUM, and returns
-4. Pick the best 3 based on the SELECTION CRITERIA above
-5. Assign badges: "Low Cost" if expenseRatio ≤ 0.10%, "Very Low Cost" if ≤ 0.05%, "Large AUM" if AUM > ₹10,000 Cr, "Low Tracking Error" if trackingError ≤ 0.05%
-6. Assign qualityScore 1–10: 10 = best possible (lowest expense + lowest tracking + highest AUM)
-7. Output ONLY the raw JSON object below — no markdown, no explanation, no text before or after
+  Tracking Error (30% weight — measures execution quality):
+    ≤ 0.03%  → 10 points
+    ≤ 0.05%  →  8 points
+    ≤ 0.10%  →  6 points
+    ≤ 0.20%  →  4 points
+    > 0.20%  →  2 points
 
-Output ONLY this exact JSON structure:
+  AUM (20% weight — proxy for liquidity and fund maturity):
+    > ₹10,000 Cr → 10 points
+    > ₹5,000 Cr  →  8 points
+    > ₹2,000 Cr  →  6 points
+    > ₹1,000 Cr  →  4 points
+    ≤ ₹1,000 Cr  →  2 points
+
+  qualityScore = round((expScore*0.5 + teScore*0.3 + aumScore*0.2))
+
+For ACTIVE funds, weight 3Y/5Y CAGR vs benchmark more heavily.
+
+═══════════════════════════════════════════════
+BADGES — assign based on actual data
+═══════════════════════════════════════════════
+  "Lowest Cost"       if expenseRatio ≤ 0.07%
+  "Low Cost"          if expenseRatio ≤ 0.15%
+  "Very Low Tracking" if trackingError ≤ 0.03%
+  "Low Tracking"      if trackingError ≤ 0.05%
+  "Large AUM"         if AUM > ₹10,000 Cr
+  "High AUM"          if AUM > ₹5,000 Cr
+  "Long Track Record" if fundAgeYears ≥ 7
+  "Newer Fund"        if fundAgeYears < 3
+
+═══════════════════════════════════════════════
+FUND SELECTION GUIDELINES
+═══════════════════════════════════════════════
+  Low risk / preferIndex = true:
+    → Focus on Nifty 50 passive funds
+    → Call getIndexFunds(category="nifty50") first
+    → Top picks by score: Nippon (118834), Bandhan (125497), Navi (145552), SBI (147623)
+    → Do NOT dismiss a fund just because its AUM is smaller — Nippon (118834) has
+      the best expense ratio (0.07%) among established Nifty 50 funds with 5Y history.
+
+  Medium risk:
+    → Consider Nifty 50 + Nifty Next 50 mix, or flexi cap / large & mid cap active
+    → Use searchFunds for active fund options
+
+  High risk:
+    → Midcap 150, Smallcap 250 index funds OR active mid/small cap funds
+    → Call getIndexFunds(category="midcap") or getIndexFunds(category="smallcap")
+
+  International allocation (optional, for any risk level):
+    → Motilal Oswal S&P 500 (135781) for US exposure
+    → Note: tracking error for international funds is higher due to currency translation — this is normal, do NOT penalise it the same way as domestic index tracking error
+
+═══════════════════════════════════════════════
+RETURNS — important notes for your explanation
+═══════════════════════════════════════════════
+  - All returns from getFundDetails are CAGR (annualised), NOT absolute %
+  - For funds with no 5Y history, use returnsOverall (since inception CAGR) as proxy
+  - NEVER compare a fund with <3Y history against one with 5Y+ history on returns alone
+  - If two funds have almost identical CAGR (within 0.3%), the one with lower expense
+    ratio is strictly better — the difference WILL compound over 7+ years
+
+═══════════════════════════════════════════════
+STEPS YOU MUST FOLLOW
+═══════════════════════════════════════════════
+  1. Call getIndexFunds with appropriate category filter based on user risk
+  2. Shortlist 4–5 candidates from the list
+  3. Call getFundDetails for each shortlisted fund to get CAGR returns and verify data
+  4. Score each candidate using the SCORING RUBRIC above
+  5. Pick top 3 by score; break ties by lower expense ratio
+  6. Assign badges and write a whyChosen explanation (2–3 sentences) that references
+     the actual expense ratio, tracking error, and CAGR numbers — be specific
+
+═══════════════════════════════════════════════
+OUTPUT — raw JSON only, no markdown, no preamble
+═══════════════════════════════════════════════
 {
   "recommendations": [
     {
@@ -146,26 +220,28 @@ Output ONLY this exact JSON structure:
       "currentNAV": "...",
       "returns30Days": "...",
       "returns1Year": "...",
-      "returns5Year": "...",
-      "returnsOverall": "...",
+      "returns3Year": "...",
+      "returns5Year": "13.46% CAGR",
+      "returnsOverall": "14.20% CAGR",
       "inceptionDate": "...",
-      "expenseRatio": "0.05%",
+      "fundAgeYears": 7.2,
+      "expenseRatio": "0.07%",
       "trackingError": "0.03%",
-      "aum": "₹22,000 Cr",
-      "whyChosen": "2–3 sentence personalized explanation referencing expense ratio, tracking error, or AUM",
+      "aum": "₹3,030 Cr",
+      "whyChosen": "At 0.07% expense ratio, this is the lowest-cost established Nifty 50 fund with a verified 5-year track record. Its tracking error of 0.03% ensures you capture the index return accurately, and the 5Y CAGR of 13.46% matches the best in the category.",
       "qualityScore": 9,
-      "badges": ["Low Cost", "Large AUM", "Low Tracking Error"]
+      "badges": ["Lowest Cost", "Very Low Tracking", "Long Track Record"]
     }
   ],
-  "summary": "Overall 2–3 sentence strategy explanation mentioning why these funds were chosen based on cost and quality.",
+  "summary": "...",
   "selectionCriteria": {
-    "expenseRatioPriority": "Funds with expense ratio below 0.10% were preferred to maximize net returns",
-    "trackingErrorPriority": "Index funds with tracking error below 0.05% were preferred for accurate benchmark replication",
-    "aumPriority": "Funds with AUM above ₹10,000 Cr were preferred for liquidity and stability"
+    "expenseRatioPriority": "...",
+    "trackingErrorPriority": "...",
+    "aumPriority": "..."
   }
 }`;
 
-    for (let step = 0; step < 10; step++) {
+    for (let step = 0; step < 12; step++) {
         const response = await client.messages.create({
             model: "claude-haiku-4-5-20251001",
             max_tokens: 4096,
