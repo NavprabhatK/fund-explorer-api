@@ -1,0 +1,9 @@
+{
+  "builder": "docker",
+  "deploy": {
+    "startCommand": "bun run dist/index.js",
+    "healthcheckPath": "/health",
+    "restartPolicyType": "on_failure",
+    "restartPolicyMaxRetries": 3
+  }
+}

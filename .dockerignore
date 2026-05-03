@@ -1,0 +1,36 @@
+# Dependencies — reinstalled inside Docker
+node_modules/
+.bun/
+
+# Build artifacts
+dist/
+
+# Environment files — never bake secrets into image
+.env
+.env.*
+!.env.example
+
+# Git & CI
+.git/
+.gitignore
+.github/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs / tests (not needed at runtime)
+README.md
+*.test.ts
+*.spec.ts
+__tests__/
+coverage/
